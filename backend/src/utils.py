@@ -3,11 +3,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import csv
 
+from src.decorators import run_if_table_empty
 from src.database import Respondent as respondent
 
 CSV_PATH = "templates/data_1.csv"
 BATCH_SIZE = 1000
 
+@run_if_table_empty(respondent)
 async def load_csv_to_db(session: AsyncSession) -> None:
     """
     Загружает данные из CSV файла в таблицу базы данных.

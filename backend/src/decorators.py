@@ -1,62 +1,23 @@
 from functools import wraps
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import HTTPException, status
-from fastapi.responses import JSONResponse
-from typing import Callable, Any
 
 
-def run_if_table_empty(table: Any) -> Callable:
+def run_if_table_empty(model):
     """
-    Декоратор для проверки, пуста ли таблица, перед выполнением функции.
+    Декоратор для выполнения функции только в случае, если таблица модели пуста.
 
-    Этот декоратор выполняет проверку на наличие данных в указанной таблице. Если таблица пуста,
-    функция будет выполнена, иначе будет выброшено исключение с ошибкой, что таблица уже содержит данные.
+    Используется для инициализационной логики, например, загрузки данных в базу данных,
+    которая должна выполняться только один раз — если в таблице ещё нет данных.
 
-    Параметры:
-    - table (Any): Таблица SQLAlchemy, которую нужно проверить на наличие данных.
-
-    Возвращает:
-    - Callable: Функция, которая будет вызываться, если таблица пуста.
+    Функция не будет вызвана, если в таблице уже есть хотя бы одна запись.
     """
-    def decorator(func: Callable) -> Callable:
+    def decorator(func):
         @wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> JSONResponse:
-            """
-            Вспомогательная функция для выполнения основной логики декоратора.
-            
-            Эта функция проверяет, есть ли данные в таблице, и если данных нет,
-            выполняет декорируемую функцию. Если данные есть, выбрасывается исключение.
-
-            Параметры:
-            - *args: Аргументы, переданные в декорируемую функцию.
-            - **kwargs: Ключевые аргументы, переданные в декорируемую функцию.
-
-            Возвращает:
-            - JSONResponse: Ответ с сообщением о загрузке данных или ошибке.
-            """
-            session: AsyncSession = kwargs.get("session")
-            if session is None:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Session must be provided as keyword argument",
-                )
-
-            result = await session.execute(select(table).limit(10))
-            total_rows = result.scalar()
-
-            if total_rows is not None:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Table already contains data. Cannot load more data.",
-                )
-
-            await func(*args, **kwargs)
-            return JSONResponse(
-                content={"message": "Table loaded successfully."},
-                status_code=status.HTTP_201_CREATED
-            )
+        async def wrapper(session: AsyncSession, *args, **kwargs):
+            result = await session.execute(select(model).limit(10))
+            if result.scalars().first() is None:
+                return await func(session, *args, **kwargs)
 
         return wrapper
-
     return decorator
